@@ -5,10 +5,11 @@ import Data.IORef
 import Control.Monad
 import System.Environment (getArgs, getProgName)
 import Data.Vector.Storable
+import Data.Word
 
-gen :: Int -> Int
-gen = id
-tex = generate (256 * 256) gen
+gen :: Int -> Word8
+gen i = if mod i 3 == 0 then 255 else 0
+tex = generate (256 * 256 * 3) gen
 
 initialize = do
     [buffer] <- GL.genObjectNames 1
@@ -16,11 +17,19 @@ initialize = do
 
     GL.textureWrapMode GL.Texture2D GL.S $= (GL.Repeated, GL.Repeat)
     GL.textureWrapMode GL.Texture2D GL.T $= (GL.Repeated, GL.Repeat)
+    GL.textureFilter GL.Texture2D $= ((GL.Nearest, Nothing), GL.Nearest)
 
     generateMipmap GL.Texture2D $= GL.Enabled
 
     unsafeWith tex $ \ptr ->
-        GL.texImage2D Nothing NoProxy 0 GL.RGB' (GL.TextureSize2D 256 256) 0 (GL.PixelData GL.RGB GL.UnsignedByte ptr)
+        GL.texImage2D 
+            Nothing 
+            NoProxy 
+            0 
+            GL.RGB' 
+            (GL.TextureSize2D 256 256) 
+            0 
+            (GL.PixelData GL.RGB GL.UnsignedByte ptr)
 
     errors <- get GL.errors
     when (errors /= []) $
@@ -33,7 +42,7 @@ render buffer = do
     GL.textureBinding GL.Texture2D $= Just buffer
     GL.renderPrimitive GL.Quads $ do
         GL.texCoord $ texCoord2 0 0
-        GL.vertex   $ vertex3 (0) 256 0
+        GL.vertex   $ vertex3 0 256 0
         GL.texCoord $ texCoord2 0 1
         GL.vertex   $ vertex3 (0) (0) 0
         GL.texCoord $ texCoord2 1 1
@@ -52,21 +61,32 @@ render buffer = do
     unless (esc == GLFW.Press || windowOpen == False) $
         render buffer
 
-main = do
-    GLFW.initialize
 
-    GLFW.openWindow (GL.Size 800 800) [GLFW.DisplayAlphaBits 8] GLFW.Window
-    GLFW.windowTitle    $= "GLFW Demo"
-    GL.shadeModel       $= GL.Smooth
-    GL.clearColor       $= GL.Color4 0 0 0 1
-    GL.blend            $= GL.Enabled
-    GL.blendFunc        $= (GL.SrcAlpha, GL.OneMinusSrcAlpha)
+main =
+    let windowWidth = 800
+        windowHeight = 600
+    in do
+        GLFW.initialize
+        GLFW.openWindowHint NoResize True
+        GLFW.openWindow (GL.Size windowWidth windowHeight) [GLFW.DisplayAlphaBits 8] GLFW.Window
+        GLFW.windowTitle    $= "GLFW Demo"
+        GL.shadeModel       $= GL.Smooth
+        GL.clearColor       $= GL.Color4 0 0 0 1
+        GL.blend            $= GL.Enabled
+        GL.blendFunc        $= (GL.SrcAlpha, GL.OneMinusSrcAlpha)
 
-    GL.texture GL.Texture2D $= GL.Enabled
+        GL.texture GL.Texture2D $= GL.Enabled
 
-    Main.initialize
+        GL.matrixMode $= GL.Projection
+        GL.loadIdentity
+        GL.ortho2D 0 (fromIntegral windowWidth) 0 (fromIntegral windowHeight)
 
-    GLFW.terminate
+        GL.matrixMode $= GL.Modelview 0
+        GL.loadIdentity
+
+        Main.initialize
+
+        GLFW.terminate
 
 -- type signatures to avoid ambiguity
 vertex3 :: GLfloat -> GLfloat -> GLfloat -> GL.Vertex3 GLfloat

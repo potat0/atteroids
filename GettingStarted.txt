@@ -1,0 +1,13 @@
+obtain and install plugin/local_vimrc.vim
+
+install cabal:
+    sudo apt-get install cabal
+
+configure:
+    cabal configure
+
+build:
+    cabal build
+
+run:
+    ~/.cabal/bin/atteroids
