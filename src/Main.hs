@@ -6,11 +6,14 @@ import Control.Monad
 import System.Environment (getArgs, getProgName)
 import Data.Vector.Storable
 import Data.Word
+import Codec.Picture
+import Paths_atteroids
 
 gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
 tex = generate (256 * 256 * 3) gen
 
+name = "256.png"
 initialize = do
     [buffer] <- GL.genObjectNames 1
     GL.textureBinding GL.Texture2D $= Just buffer
@@ -21,15 +24,29 @@ initialize = do
 
     generateMipmap GL.Texture2D $= GL.Enabled
 
-    unsafeWith tex $ \ptr ->
-        GL.texImage2D 
-            Nothing 
-            NoProxy 
-            0 
-            GL.RGB' 
-            (GL.TextureSize2D 256 256) 
-            0 
-            (GL.PixelData GL.RGB GL.UnsignedByte ptr)
+    dataPath <- getDataFileName name
+    readResult <- readImage dataPath
+    case readResult of
+        Left msg    -> putStrLn msg
+        Right (ImageRGB8 (Image width height imageData)) -> unsafeWith imageData $ \ptr ->
+                                                                        GL.texImage2D 
+                                                                            Nothing 
+                                                                            NoProxy 
+                                                                            0 
+                                                                            GL.RGB' 
+                                                                            (GL.TextureSize2D (fromIntegral width) (fromIntegral height)) 
+                                                                            0 
+                                                                            (GL.PixelData GL.RGB GL.UnsignedByte ptr)
+
+--    unsafeWith tex $ \ptr ->
+--        GL.texImage2D 
+--            Nothing 
+--            NoProxy 
+--            0 
+--            GL.RGB' 
+--            (GL.TextureSize2D 256 256) 
+--            0 
+--            (GL.PixelData GL.RGB GL.UnsignedByte ptr)
 
     errors <- get GL.errors
     when (errors /= []) $
@@ -66,6 +83,9 @@ main =
     let windowWidth = 800
         windowHeight = 600
     in do
+        dataFile <- getDataFileName "foo"
+        putStrLn dataFile
+
         GLFW.initialize
         GLFW.openWindowHint NoResize True
         GLFW.openWindow (GL.Size windowWidth windowHeight) [GLFW.DisplayAlphaBits 8] GLFW.Window
