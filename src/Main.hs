@@ -13,6 +13,16 @@ gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
 tex = generate (256 * 256 * 3) gen
 
+updateTexture (Image width height imageData) = unsafeWith imageData $ \ptr ->
+    GL.texImage2D 
+        Nothing 
+        NoProxy 
+        0 
+        GL.RGB' 
+        (GL.TextureSize2D (fromIntegral width) (fromIntegral height)) 
+        0 
+        (GL.PixelData GL.RGB GL.UnsignedByte ptr)
+    
 name = "256.png"
 initialize = do
     [buffer] <- GL.genObjectNames 1
@@ -28,25 +38,7 @@ initialize = do
     readResult <- readImage dataPath
     case readResult of
         Left msg    -> putStrLn msg
-        Right (ImageRGB8 (Image width height imageData)) -> unsafeWith imageData $ \ptr ->
-                                                                        GL.texImage2D 
-                                                                            Nothing 
-                                                                            NoProxy 
-                                                                            0 
-                                                                            GL.RGB' 
-                                                                            (GL.TextureSize2D (fromIntegral width) (fromIntegral height)) 
-                                                                            0 
-                                                                            (GL.PixelData GL.RGB GL.UnsignedByte ptr)
-
---    unsafeWith tex $ \ptr ->
---        GL.texImage2D 
---            Nothing 
---            NoProxy 
---            0 
---            GL.RGB' 
---            (GL.TextureSize2D 256 256) 
---            0 
---            (GL.PixelData GL.RGB GL.UnsignedByte ptr)
+        Right (ImageRGB8 image) -> updateTexture image
 
     errors <- get GL.errors
     when (errors /= []) $
