@@ -24,5 +24,7 @@ executable atteroids
                         vector == 0.9.*, 
                         OpenGL == 2.5.*, 
                         GLFW == 0.5.*,
-                        JuicyPixels == 2.0.*
+                        JuicyPixels == 2.0.*,
+                        OpenGLRaw == 1.2.*,
+                        array == 0.4.*
   hs-source-dirs:       src

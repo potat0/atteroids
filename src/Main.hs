@@ -1,13 +1,20 @@
-import Graphics.Rendering.OpenGL as GL
-import Graphics.UI.GLFW as GLFW
-import Graphics.Rendering.OpenGL (($=))
-import Data.IORef
-import Control.Monad
-import System.Environment (getArgs, getProgName)
-import Data.Vector.Storable
-import Data.Word
 import Codec.Picture
+import Control.Monad
+import Data.IORef
+import Data.Vector.Storable
+import Data.Array.Storable
+import Data.Word
+import Foreign.C.Types
+import Foreign.ForeignPtr.Unsafe
+import Foreign.Ptr
+import Foreign.Storable
+import Graphics.Rendering.OpenGL.GL.VertexArrays as GL
+import Graphics.Rendering.OpenGL (($=))
+import Graphics.Rendering.OpenGL as GL
+import Graphics.Rendering.OpenGL.Raw as GLRaw
+import Graphics.UI.GLFW as GLFW
 import Paths_atteroids
+import System.Environment (getArgs, getProgName)
 
 gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
@@ -22,11 +29,41 @@ updateTexture (Image width height imageData) = unsafeWith imageData $ \ptr ->
         (GL.TextureSize2D (fromIntegral width) (fromIntegral height)) 
         0 
         (GL.PixelData GL.RGB GL.UnsignedByte ptr)
-    
+
+--newtype VertexBufferObject = VertexBufferObject GL.BufferObject
+--unVertexBufferObject (VertexBufferObject internalBuffer) =
+--    internalBuffer
+--
+--type Sprite = (VertexBufferObject GL.BufferObject GL.BufferObject)
+
 name = "256.png"
-initialize = do
-    [buffer] <- GL.genObjectNames 1
-    GL.textureBinding GL.Texture2D $= Just buffer
+
+fillBuffer :: BufferObject -> [Float] -> IO ()
+fillBuffer bufferObject vertexData = do
+    GL.bindBuffer GL.ArrayBuffer $= Just bufferObject
+    --GL.bufferData GL.ArrayBuffer $= (fromIntegral size, unsafeForeignPtrToPtr ptr, GL.StaticDraw)
+    arr <- newListArray (0, Prelude.length vertexData) vertexData
+    withStorableArray arr (\ptr -> 
+        GL.bufferData GL.ArrayBuffer $= (fromIntegral $ (Prelude.length vertexData) * (sizeOf (0 :: Float)), ptr, GL.StaticDraw))
+
+vertexCoords :: [Float]
+vertexCoords = [
+    0, 256,
+    0, 0,
+    256, 0,
+    256, 256]
+
+textureCoords :: [Float]
+textureCoords = [
+        0, 0,
+        0, 1,
+        1, 1,
+        1, 0]
+
+loadTexture = do
+    [tex] <- GL.genObjectNames 1
+
+    GL.textureBinding GL.Texture2D $= Just tex
 
     GL.textureWrapMode GL.Texture2D GL.S $= (GL.Repeated, GL.Repeat)
     GL.textureWrapMode GL.Texture2D GL.T $= (GL.Repeated, GL.Repeat)
@@ -39,25 +76,46 @@ initialize = do
     case readResult of
         Left msg    -> putStrLn msg
         Right (ImageRGB8 image) -> updateTexture image
+    return tex
+
+initialize = do
+    [vertexBuffer, textureCoordBuffer] <- GL.genObjectNames 2
+
+
+    fillBuffer vertexBuffer vertexCoords
+    fillBuffer textureCoordBuffer textureCoords
+
+    tex <- loadTexture
+
+    GL.textureBinding GL.Texture2D $= Just tex
+
+    GL.bindBuffer GL.ArrayBuffer $= Just vertexBuffer
+    GL.arrayPointer GL.VertexArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
+    GL.clientState GL.VertexArray $= GL.Enabled
+
+    GL.bindBuffer GL.ArrayBuffer $= Just textureCoordBuffer
+    GL.arrayPointer GL.TextureCoordArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
+    GL.clientState GL.TextureCoordArray $= GL.Enabled
 
     errors <- get GL.errors
     when (errors /= []) $
         putStrLn $ show errors
 
-    render buffer
+    render vertexBuffer tex
 
-render buffer = do
+render vertexBuffer tex = do
     GL.clear [GL.ColorBuffer]
-    GL.textureBinding GL.Texture2D $= Just buffer
-    GL.renderPrimitive GL.Quads $ do
-        GL.texCoord $ texCoord2 0 0
-        GL.vertex   $ vertex3 0 256 0
-        GL.texCoord $ texCoord2 0 1
-        GL.vertex   $ vertex3 (0) (0) 0
-        GL.texCoord $ texCoord2 1 1
-        GL.vertex   $ vertex3 256 (0) 0
-        GL.texCoord $ texCoord2 1 0
-        GL.vertex   $ vertex3 256 256 0
+
+    GL.drawArrays GL.Quads 0 4
+    --GL.renderPrimitive GL.Quads $ do
+    --    GL.texCoord $ texCoord2 0 0
+    --    GL.vertex   $ vertex3 0 256 0
+    --    GL.texCoord $ texCoord2 0 1
+    --    GL.vertex   $ vertex3 (0) (0) 0
+    --    GL.texCoord $ texCoord2 1 1
+    --    GL.vertex   $ vertex3 256 (0) 0
+    --    GL.texCoord $ texCoord2 1 0
+    --    GL.vertex   $ vertex3 256 256 0
 
     errors <- get GL.errors
     when (errors /= []) $
@@ -68,7 +126,7 @@ render buffer = do
     windowOpen <- GLFW.getParam GLFW.Opened
     esc <- GLFW.getKey GLFW.ESC
     unless (esc == GLFW.Press || windowOpen == False) $
-        render buffer
+        render vertexBuffer tex
 
 
 main =
