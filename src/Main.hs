@@ -15,10 +15,18 @@ import Graphics.Rendering.OpenGL.Raw as GLRaw
 import Graphics.UI.GLFW as GLFW
 import Paths_atteroids
 import System.Environment (getArgs, getProgName)
+import Data.Time
 
 gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
 tex = generate (256 * 256 * 3) gen
+
+createTextureAndBind :: IO TextureObject
+createTextureAndBind = do
+    [tex] <- GL.genObjectNames 1
+
+    GL.textureBinding GL.Texture2D $= Just tex
+    return tex
 
 updateTexture (Image width height imageData) = unsafeWith imageData $ \ptr ->
     GL.texImage2D 
@@ -30,18 +38,11 @@ updateTexture (Image width height imageData) = unsafeWith imageData $ \ptr ->
         0 
         (GL.PixelData GL.RGB GL.UnsignedByte ptr)
 
---newtype VertexBufferObject = VertexBufferObject GL.BufferObject
---unVertexBufferObject (VertexBufferObject internalBuffer) =
---    internalBuffer
---
---type Sprite = (VertexBufferObject GL.BufferObject GL.BufferObject)
-
 name = "256.png"
 
 fillBuffer :: BufferObject -> [Float] -> IO ()
 fillBuffer bufferObject vertexData = do
     GL.bindBuffer GL.ArrayBuffer $= Just bufferObject
-    --GL.bufferData GL.ArrayBuffer $= (fromIntegral size, unsafeForeignPtrToPtr ptr, GL.StaticDraw)
     arr <- newListArray (0, Prelude.length vertexData) vertexData
     withStorableArray arr (\ptr -> 
         GL.bufferData GL.ArrayBuffer $= (fromIntegral $ (Prelude.length vertexData) * (sizeOf (0 :: Float)), ptr, GL.StaticDraw))
@@ -53,6 +54,14 @@ vertexCoords = [
     256, 0,
     256, 256]
 
+vertexCoordsMoving offset = [
+    0 + x', 256,
+    0 + x', 0,
+    256 + x', 0,
+    256 + x', 256]
+    where
+        x' = fromInteger offset
+
 textureCoords :: [Float]
 textureCoords = [
         0, 0,
@@ -60,7 +69,7 @@ textureCoords = [
         1, 1,
         1, 0]
 
-loadTexture = do
+loadTexture name = do
     [tex] <- GL.genObjectNames 1
 
     GL.textureBinding GL.Texture2D $= Just tex
@@ -76,16 +85,16 @@ loadTexture = do
     case readResult of
         Left msg    -> putStrLn msg
         Right (ImageRGB8 image) -> updateTexture image
+
     return tex
 
 initialize = do
     [vertexBuffer, textureCoordBuffer] <- GL.genObjectNames 2
 
-
-    fillBuffer vertexBuffer vertexCoords
+    fillBuffer vertexBuffer $ vertexCoordsMoving 10
     fillBuffer textureCoordBuffer textureCoords
 
-    tex <- loadTexture
+    tex <- loadTexture name
 
     GL.textureBinding GL.Texture2D $= Just tex
 
@@ -104,6 +113,11 @@ initialize = do
     render vertexBuffer tex
 
 render vertexBuffer tex = do
+    currentTime <- getCurrentTime
+
+    GL.bindBuffer GL.ArrayBuffer $= Just vertexBuffer
+    fillBuffer vertexBuffer $ vertexCoordsMoving $ mod (round $ utctDayTime currentTime) 50
+
     GL.clear [GL.ColorBuffer]
 
     GL.drawArrays GL.Quads 0 4
