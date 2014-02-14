@@ -16,6 +16,13 @@ import Graphics.UI.GLFW as GLFW
 import Paths_atteroids
 import System.Environment (getArgs, getProgName)
 import Data.Time
+import Data.Maybe
+import Data.Aeson as Aeson
+import Data.Aeson ((.:))
+import qualified Data.Text as Text
+import Control.Applicative ((<$>), (<*>))
+import qualified Data.ByteString.Lazy.Char8 as LazyByteString
+import qualified System.IO as IO
 
 gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
@@ -88,7 +95,32 @@ loadTexture name = do
 
     return tex
 
+data Sprite = Sprite String
+data StaticAnimation = StaticAnimation Int Int Int Int deriving (Show)
+
+instance Aeson.FromJSON StaticAnimation where
+    parseJSON (Object v) = StaticAnimation <$>
+        (v .: Text.pack "left") <*>
+        (v .: Text.pack "top") <*>
+        (v .: Text.pack "right") <*>
+        (v .: Text.pack "bottom")
+    parseJSON _ = mzero
+
+jsonData = LazyByteString.pack "{\"left\":1,\"top\":2,\"right\":3,\"bottom\":4}"
+decodedStaticAnim = Aeson.decode jsonData :: Maybe StaticAnimation
+
+readJsonFile filename = do
+    handle <- IO.openFile filename IO.ReadMode
+    text <- LazyByteString.hGetContents handle
+    IO.hClose handle
+    return text
+
 initialize = do
+
+    shipFileName <- getDataFileName "ship.json"
+    text <- readJsonFile shipFileName
+    putStrLn $ show text
+
     [vertexBuffer, textureCoordBuffer] <- GL.genObjectNames 2
 
     fillBuffer vertexBuffer $ vertexCoordsMoving 10
@@ -148,7 +180,6 @@ main =
         windowHeight = 600
     in do
         dataFile <- getDataFileName "foo"
-        putStrLn dataFile
 
         GLFW.initialize
         GLFW.openWindowHint NoResize True

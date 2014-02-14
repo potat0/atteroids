@@ -1,0 +1,17 @@
+{
+    "SpriteSheetFilePath" : "ship.png",
+    "Animations" : [
+        {
+            "Type" : "Fixed",
+            "FrameMs" : 33,
+            "Frames" : [
+                {
+                    "left" : 0,
+                    "top" : 0,
+                    "right" : 256,
+                    "bottom" : 256
+                }
+            ]
+        }
+    ]
+}
