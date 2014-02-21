@@ -23,6 +23,7 @@ import qualified Data.Text as Text
 import Control.Applicative ((<$>), (<*>))
 import qualified Data.ByteString.Lazy.Char8 as LazyByteString
 import qualified System.IO as IO
+import qualified Control.Exception as Exception
 
 gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
@@ -109,11 +110,15 @@ instance Aeson.FromJSON StaticAnimation where
 jsonData = LazyByteString.pack "{\"left\":1,\"top\":2,\"right\":3,\"bottom\":4}"
 decodedStaticAnim = Aeson.decode jsonData :: Maybe StaticAnimation
 
+readJsonFile :: FilePath -> IO LazyByteString.ByteString
 readJsonFile filename = do
-    handle <- IO.openFile filename IO.ReadMode
-    text <- LazyByteString.hGetContents handle
-    IO.hClose handle
-    return text
+    maybeHandle <- (Exception.try $ IO.openFile filename IO.ReadMode) :: IO (Either Exception.IOException IO.Handle)
+    case maybeHandle of
+        Left e -> return $ LazyByteString.pack $ "Exception while opening file: " Prelude.++ filename Prelude.++ ". Exception: " Prelude.++ show e
+        Right handle -> do
+            text <- LazyByteString.hGetContents handle
+            IO.hClose handle
+            return text
 
 initialize = do
 
