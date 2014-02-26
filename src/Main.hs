@@ -29,6 +29,27 @@ gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
 tex = generate (256 * 256 * 3) gen
 
+data FloatPoint = FloatPoint Float Float
+data FloatSize = FloatSize Float Float
+data FloatRect = FloatRect FloatPoint FloatSize
+data Console = 
+    -- Arguments:
+    -- FloatPoint   The bottom left corner of the window.
+    -- FloatSize    The height and width of the window.
+    Console FloatPoint FloatSize
+
+data ColorRect = ColorRect (GL.Color4 GL.GLfloat) GL.BufferObject
+
+colorRectDraw (ColorRect color vertexBuffer) = do
+    GL.bindBuffer GL.ArrayBuffer $= Just vertexBuffer
+    GL.arrayPointer GL.VertexArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
+    GL.drawArrays GL.Quads 0 4
+
+colorRectInit color (FloatRect (FloatPoint x y) (FloatSize width height)) = do
+    [buffer] <- GL.genObjectNames 1
+    fillBuffer buffer [x, y + height, x, y, x + width, y, x + width, y + height]
+    return $ ColorRect color buffer
+
 createTextureAndBind :: IO TextureObject
 createTextureAndBind = do
     [tex] <- GL.genObjectNames 1
@@ -141,23 +162,28 @@ initialize = do
 
     GL.bindBuffer GL.ArrayBuffer $= Just textureCoordBuffer
     GL.arrayPointer GL.TextureCoordArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
-    GL.clientState GL.TextureCoordArray $= GL.Enabled
+
+    colorRect <- colorRectInit (GL.Color4 0 1 0 0) (FloatRect (FloatPoint 128 128) (FloatSize 128 128))
 
     errors <- get GL.errors
     when (errors /= []) $
         putStrLn $ show errors
 
-    render vertexBuffer tex
+    render vertexBuffer tex colorRect
 
-render vertexBuffer tex = do
+
+render vertexBuffer tex colorRect = do
     currentTime <- getCurrentTime
 
     GL.bindBuffer GL.ArrayBuffer $= Just vertexBuffer
     fillBuffer vertexBuffer $ vertexCoordsMoving $ mod (round $ utctDayTime currentTime) 50
+    GL.arrayPointer GL.VertexArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
+    GL.clientState GL.TextureCoordArray $= GL.Enabled
 
     GL.clear [GL.ColorBuffer]
 
     GL.drawArrays GL.Quads 0 4
+    GL.clientState GL.TextureCoordArray $= GL.Disabled
     --GL.renderPrimitive GL.Quads $ do
     --    GL.texCoord $ texCoord2 0 0
     --    GL.vertex   $ vertex3 0 256 0
@@ -167,6 +193,7 @@ render vertexBuffer tex = do
     --    GL.vertex   $ vertex3 256 (0) 0
     --    GL.texCoord $ texCoord2 1 0
     --    GL.vertex   $ vertex3 256 256 0
+    colorRectDraw colorRect
 
     errors <- get GL.errors
     when (errors /= []) $
@@ -177,7 +204,7 @@ render vertexBuffer tex = do
     windowOpen <- GLFW.getParam GLFW.Opened
     esc <- GLFW.getKey GLFW.ESC
     unless (esc == GLFW.Press || windowOpen == False) $
-        render vertexBuffer tex
+        render vertexBuffer tex colorRect
 
 
 main =
