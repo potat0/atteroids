@@ -38,17 +38,27 @@ data Console =
     -- FloatSize    The height and width of the window.
     Console FloatPoint FloatSize
 
-data ColorRect = ColorRect (GL.Color4 GL.GLfloat) GL.BufferObject
+data ColorRect = ColorRect GL.BufferObject GL.BufferObject
 
-colorRectDraw (ColorRect color vertexBuffer) = do
+colorRectDraw (ColorRect colorBuffer vertexBuffer) = do
     GL.bindBuffer GL.ArrayBuffer $= Just vertexBuffer
     GL.arrayPointer GL.VertexArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
+    --GL.clientState $= GL.VertexArray $= GL.Enabled
+
+    GL.bindBuffer GL.ArrayBuffer $= Just colorBuffer
+    GL.arrayPointer GL.ColorArray $= VertexArrayDescriptor 3 GL.Float 0 nullPtr
+    GL.clientState GL.ColorArray $= GL.Enabled
+
     GL.drawArrays GL.Quads 0 4
 
-colorRectInit color (FloatRect (FloatPoint x y) (FloatSize width height)) = do
-    [buffer] <- GL.genObjectNames 1
-    fillBuffer buffer [x, y + height, x, y, x + width, y, x + width, y + height]
-    return $ ColorRect color buffer
+    GL.clientState GL.ColorArray $= GL.Disabled
+    --GL.clientState $= GL.VertexArray $= GL.Disabled
+
+colorRectInit (GL.Color3 red green blue) (FloatRect (FloatPoint x y) (FloatSize width height)) = do
+    [colorBuffer, vertexBuffer] <- GL.genObjectNames 2
+    fillBuffer colorBuffer $ Prelude.concat $ Prelude.replicate 4 [red, green, blue]
+    fillBuffer vertexBuffer [x, y + height, x, y, x + width, y, x + width, y + height]
+    return $ ColorRect colorBuffer vertexBuffer
 
 createTextureAndBind :: IO TextureObject
 createTextureAndBind = do
@@ -163,7 +173,7 @@ initialize = do
     GL.bindBuffer GL.ArrayBuffer $= Just textureCoordBuffer
     GL.arrayPointer GL.TextureCoordArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
 
-    colorRect <- colorRectInit (GL.Color4 0 1 0 0) (FloatRect (FloatPoint 128 128) (FloatSize 128 128))
+    colorRect <- colorRectInit (GL.Color3 255 0 0) (FloatRect (FloatPoint 128 128) (FloatSize 128 128))
 
     errors <- get GL.errors
     when (errors /= []) $
