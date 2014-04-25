@@ -8,6 +8,7 @@ import Foreign.C.Types
 import Foreign.ForeignPtr.Unsafe
 import Foreign.Ptr
 import Foreign.Storable
+import Foreign.Marshal.Array
 import Graphics.Rendering.OpenGL.GL.VertexArrays as GL
 import Graphics.Rendering.OpenGL (($=))
 import Graphics.Rendering.OpenGL as GL
@@ -17,13 +18,14 @@ import Paths_atteroids
 import System.Environment (getArgs, getProgName)
 import Data.Time
 import Data.Maybe
-import Data.Aeson as Aeson
+import qualified Data.Aeson as Aeson
 import Data.Aeson ((.:))
 import qualified Data.Text as Text
 import Control.Applicative ((<$>), (<*>))
 import qualified Data.ByteString.Lazy.Char8 as LazyByteString
 import qualified System.IO as IO
 import qualified Control.Exception as Exception
+import qualified Sound.PortAudio as PortAudio
 
 gen :: Int -> Word8
 gen i = if mod i 3 == 0 then 255 else 0
@@ -38,27 +40,25 @@ data Console =
     -- FloatSize    The height and width of the window.
     Console FloatPoint FloatSize
 
-data ColorRect = ColorRect GL.BufferObject GL.BufferObject
+data ColorRect = ColorRect (GL.Color3 GLfloat) GL.BufferObject
 
-colorRectDraw (ColorRect colorBuffer vertexBuffer) = do
+colorRectDraw (ColorRect color vertexBuffer) = do
     GL.bindBuffer GL.ArrayBuffer $= Just vertexBuffer
     GL.arrayPointer GL.VertexArray $= VertexArrayDescriptor 2 GL.Float 0 nullPtr
     --GL.clientState $= GL.VertexArray $= GL.Enabled
 
-    GL.bindBuffer GL.ArrayBuffer $= Just colorBuffer
-    GL.arrayPointer GL.ColorArray $= VertexArrayDescriptor 3 GL.Float 0 nullPtr
-    GL.clientState GL.ColorArray $= GL.Enabled
+    -- Set the color.
+    GL.color $ color
 
     GL.drawArrays GL.Quads 0 4
 
-    GL.clientState GL.ColorArray $= GL.Disabled
-    --GL.clientState $= GL.VertexArray $= GL.Disabled
+    -- Restore the color.
+    GL.color $ ((GL.Color3 1 1 1) :: GL.Color3 GLfloat)
 
-colorRectInit (GL.Color3 red green blue) (FloatRect (FloatPoint x y) (FloatSize width height)) = do
-    [colorBuffer, vertexBuffer] <- GL.genObjectNames 2
-    fillBuffer colorBuffer $ Prelude.concat $ Prelude.replicate 4 [red, green, blue]
+colorRectInit color (FloatRect (FloatPoint x y) (FloatSize width height)) = do
+    [vertexBuffer] <- GL.genObjectNames 1
     fillBuffer vertexBuffer [x, y + height, x, y, x + width, y, x + width, y + height]
-    return $ ColorRect colorBuffer vertexBuffer
+    return $ ColorRect color vertexBuffer
 
 createTextureAndBind :: IO TextureObject
 createTextureAndBind = do
@@ -131,7 +131,7 @@ data Sprite = Sprite String
 data StaticAnimation = StaticAnimation Int Int Int Int deriving (Show)
 
 instance Aeson.FromJSON StaticAnimation where
-    parseJSON (Object v) = StaticAnimation <$>
+    parseJSON (Aeson.Object v) = StaticAnimation <$>
         (v .: Text.pack "left") <*>
         (v .: Text.pack "top") <*>
         (v .: Text.pack "right") <*>
@@ -217,33 +217,56 @@ render vertexBuffer tex colorRect = do
         render vertexBuffer tex colorRect
 
 
-main =
-    let windowWidth = 800
-        windowHeight = 600
-    in do
-        dataFile <- getDataFileName "foo"
+main = do
+    portAudioResult <- PortAudio.withPortAudio portAudioMain
+    case portAudioResult of
+        Right result -> putStrLn $ "portAudioOk: " Prelude.++ (show result)
+        Left error -> putStrLn $ "portAudio error: " Prelude.++ (show error)
+    where
+        portAudioMain = do
 
-        GLFW.initialize
-        GLFW.openWindowHint NoResize True
-        GLFW.openWindow (GL.Size windowWidth windowHeight) [GLFW.DisplayAlphaBits 8] GLFW.Window
-        GLFW.windowTitle    $= "GLFW Demo"
-        GL.shadeModel       $= GL.Smooth
-        GL.clearColor       $= GL.Color4 0 0 0 1
-        GL.blend            $= GL.Enabled
-        GL.blendFunc        $= (GL.SrcAlpha, GL.OneMinusSrcAlpha)
+            --PortAudio.withDefaultStream 0 1 44100 (Just 256) Nothing Nothing withDefaultStream
+            defaultStreamResult <- PortAudio.withDefaultStream 0 1 44100 (Just 256) Nothing Nothing withDefaultStream
+            case defaultStreamResult of
+                Right result -> putStrLn $ "withDefaultStream: " Prelude.++ (show result)
+                Left error -> putStrLn $ "withDefaultStream error: " Prelude.++ (show error)
+            dataFile <- getDataFileName "foo"
 
-        GL.texture GL.Texture2D $= GL.Enabled
+            GLFW.initialize
+            GLFW.openWindowHint NoResize True
+            GLFW.openWindow (GL.Size windowWidth windowHeight) [GLFW.DisplayAlphaBits 8] GLFW.Window
+            GLFW.windowTitle    $= "GLFW Demo"
+            GL.shadeModel       $= GL.Smooth
+            GL.clearColor       $= GL.Color4 0 0 0 1
+            GL.blend            $= GL.Enabled
+            GL.blendFunc        $= (GL.SrcAlpha, GL.OneMinusSrcAlpha)
 
-        GL.matrixMode $= GL.Projection
-        GL.loadIdentity
-        GL.ortho2D 0 (fromIntegral windowWidth) 0 (fromIntegral windowHeight)
+            GL.texture GL.Texture2D $= GL.Enabled
 
-        GL.matrixMode $= GL.Modelview 0
-        GL.loadIdentity
+            GL.matrixMode $= GL.Projection
+            GL.loadIdentity
+            GL.ortho2D 0 (fromIntegral windowWidth) 0 (fromIntegral windowHeight)
 
-        Main.initialize
+            GL.matrixMode $= GL.Modelview 0
+            GL.loadIdentity
 
-        GLFW.terminate
+            Main.initialize
+
+            GLFW.terminate
+            return $ Right ()
+            where
+                windowWidth = 800
+                windowHeight = 600
+                withDefaultStream
+                    :: PortAudio.Stream CFloat CFloat
+                    -> IO (Either PortAudio.Error String)
+                withDefaultStream s = do--return $ Right "Success"
+                    arr <- newListArray (0, Prelude.length soundData) soundData
+                    withStorableArray arr (\ptr -> PortAudio.writeStream s 256 ptr >>= \maybeErr -> return $ case maybeErr of
+                        Just err -> Left err
+                        otherwise -> Right "Okay")
+                    where
+                        soundData = Prelude.replicate 256 1.0
 
 -- type signatures to avoid ambiguity
 vertex3 :: GLfloat -> GLfloat -> GLfloat -> GL.Vertex3 GLfloat
